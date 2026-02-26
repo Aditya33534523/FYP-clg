@@ -4,39 +4,222 @@
 
 {% block extra_css %}
 <style>
-body {
-    background: url("{% static 'tutor/images/bg.jpg' %}") center/cover no-repeat fixed;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-}
-body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: rgba(10, 12, 16, 0.65);
-    backdrop-filter: blur(2px);
-    z-index: 0;
-}
-.auth-wrapper { position: relative; z-index: 1; width: 100%; max-width: 460px; padding: 20px; }
-.brand { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 800; color: var(--accent); letter-spacing: -1px; text-align: center; margin-bottom: 4px; }
-.brand-sub { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; text-align: center; margin-bottom: 32px; }
-.glass-card { background: rgba(18, 21, 28, 0.75); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 40px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06); }
-.card-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-.card-sub { font-size: 12px; color: var(--muted); margin-bottom: 28px; }
-.form-group { margin-bottom: 16px; }
-.form-group label { display: block; font-size: 12px; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 6px; }
-.form-input { width: 100%; background: rgba(10, 12, 16, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius); color: var(--text); font-family: 'DM Mono', monospace; font-size: 14px; padding: 12px 16px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
-.form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,229,160,0.15); }
-.form-input::placeholder { color: var(--muted); }
-.btn-primary { width: 100%; background: var(--accent); color: #000; border: none; border-radius: var(--radius); font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; padding: 13px; cursor: pointer; transition: opacity 0.2s; margin-top: 4px; }
-.btn-primary:hover { opacity: 0.85; }
-.btn-secondary { width: 100%; background: transparent; color: var(--muted); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius); font-family: 'DM Mono', monospace; font-size: 13px; padding: 11px; cursor: pointer; transition: all 0.2s; margin-top: 10px; }
-.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-.divider { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 20px 0; }
-.hint-box { background: rgba(10,12,16,0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; font-size: 11px; color: var(--muted); line-height: 1.8; margin-top: 16px; }
-.hint-box b { color: var(--text); }
+    body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-image: url("{% static 'tutor/images/bg.jpg' %}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }
+
+    body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: rgba(8, 10, 15, 0.45);
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .auth-wrapper {
+        position: relative;
+        z-index: 10;
+        width: 100%;
+        max-width: 460px;
+        padding: 24px 16px;
+    }
+
+    .brand {
+        font-family: 'Syne', sans-serif;
+        font-size: 32px;
+        font-weight: 800;
+        color: #00e5a0;
+        letter-spacing: -1px;
+        text-align: center;
+        margin-bottom: 6px;
+        text-shadow: 0 0 30px rgba(0, 229, 160, 0.4);
+    }
+
+    .brand-sub {
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.45);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .glass-card {
+        background: rgba(255, 255, 255, 0.06);
+        -webkit-backdrop-filter: blur(28px) saturate(160%);
+        backdrop-filter: blur(28px) saturate(160%);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-bottom-color: rgba(255, 255, 255, 0.06);
+        border-right-color: rgba(255, 255, 255, 0.06);
+        border-radius: 24px;
+        padding: 40px 36px;
+        box-shadow: 0 2px 0 rgba(255, 255, 255, 0.12) inset, 0 32px 64px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .card-title {
+        font-family: 'Syne', sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+    }
+
+    .card-sub {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-bottom: 28px;
+        font-family: 'DM Mono', monospace;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.5);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin-bottom: 7px;
+        font-family: 'DM Mono', monospace;
+    }
+
+    .form-input {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        color: #fff;
+        font-family: 'DM Mono', monospace;
+        font-size: 14px;
+        padding: 13px 15px;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        box-sizing: border-box;
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+    }
+
+    .form-input:focus {
+        border-color: #00e5a0;
+        background: rgba(0, 229, 160, 0.06);
+        box-shadow: 0 0 0 3px rgba(0, 229, 160, 0.18);
+    }
+
+    .form-input::placeholder {
+        color: rgba(255, 255, 255, 0.25);
+    }
+
+    .form-input:-webkit-autofill,
+    .form-input:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5) inset, 0 0 0 3px rgba(0, 229, 160, 0.18);
+        -webkit-text-fill-color: #fff;
+        caret-color: #fff;
+    }
+
+    .btn-primary {
+        width: 100%;
+        background: linear-gradient(135deg, #00e5a0 0%, #00c584 100%);
+        color: #000;
+        border: none;
+        border-radius: 10px;
+        font-family: 'Syne', sans-serif;
+        font-weight: 800;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        padding: 14px;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-top: 6px;
+        box-shadow: 0 4px 20px rgba(0, 229, 160, 0.35);
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(0, 229, 160, 0.45);
+    }
+
+    .btn-secondary {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        font-family: 'DM Mono', monospace;
+        font-size: 13px;
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-top: 10px;
+    }
+
+    .btn-secondary:hover {
+        border-color: #00e5a0;
+        color: #00e5a0;
+        background: rgba(0, 229, 160, 0.07);
+    }
+
+    .divider {
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        margin: 22px 0 0;
+    }
+
+    .hint-box {
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 14px 16px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.35);
+        line-height: 2;
+        margin-top: 18px;
+        font-family: 'DM Mono', monospace;
+    }
+
+    .hint-box b {
+        color: rgba(255, 255, 255, 0.7);
+        font-weight: 600;
+    }
+
+    .messages {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 16px;
+    }
+
+    .messages li {
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        font-family: 'DM Mono', monospace;
+        border: 1px solid;
+    }
+
+    .messages li.error {
+        background: rgba(255, 100, 100, 0.12);
+        border-color: rgba(255, 100, 100, 0.4);
+        color: #ff8080;
+    }
+
+    .messages li.success {
+        background: rgba(0, 229, 160, 0.1);
+        border-color: rgba(0, 229, 160, 0.3);
+        color: #00e5a0;
+    }
 </style>
 {% endblock %}
 
@@ -44,6 +227,7 @@ body::before {
 <div class="auth-wrapper">
     <div class="brand">🧠 RAG AI Tutor</div>
     <div class="brand-sub">Create your account</div>
+
     <div class="glass-card">
         <div class="card-title">Get started</div>
         <div class="card-sub">Create your free account</div>
@@ -56,19 +240,22 @@ body::before {
         </ul>
         {% endif %}
 
-        <form method="POST">
+        <form method="POST" action="{% url 'register' %}">
             {% csrf_token %}
             <div class="form-group">
                 <label>Email Address</label>
-                <input type="email" name="email" class="form-input" placeholder="you@example.com" required>
+                <input type="email" name="email" class="form-input" placeholder="you@example.com" required
+                    autocomplete="email">
             </div>
             <div class="form-group">
                 <label>Password</label>
-                <input type="password" name="password1" class="form-input" placeholder="Min 8 chars, upper, lower, digit, symbol" required>
+                <input type="password" name="password1" class="form-input"
+                    placeholder="Min 8 chars, upper, lower, digit, symbol" required autocomplete="new-password">
             </div>
             <div class="form-group">
                 <label>Confirm Password</label>
-                <input type="password" name="password2" class="form-input" placeholder="Repeat password" required>
+                <input type="password" name="password2" class="form-input" placeholder="Repeat password" required
+                    autocomplete="new-password">
             </div>
             <button type="submit" class="btn-primary">Create Account</button>
         </form>
@@ -76,14 +263,14 @@ body::before {
         <div class="hint-box">
             Password must have:<br>
             • At least <b>8 characters</b><br>
-            • One <b>uppercase</b> letter (A-Z)<br>
-            • One <b>lowercase</b> letter (a-z)<br>
-            • One <b>digit</b> (0-9)<br>
+            • One <b>uppercase</b> letter (A–Z)<br>
+            • One <b>lowercase</b> letter (a–z)<br>
+            • One <b>digit</b> (0–9)<br>
             • One <b>special character</b> (!@#$%^&* etc.)
         </div>
 
         <hr class="divider">
-        <a href="{% url 'login' %}">
+        <a href="{% url 'login' %}" style="text-decoration:none">
             <button class="btn-secondary">← Back to Sign In</button>
         </a>
     </div>
