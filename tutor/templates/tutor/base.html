@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RAG Based AI Tutor{% endblock %}</title>
+    {% load static %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0c10;
+            --surface: rgba(18, 21, 28, 0.85);
+            --border: rgba(30, 35, 48, 0.7);
+            --accent: #00e5a0;
+            --accent2: #5b8dff;
+            --warn: #ff6b6b;
+            --text: #e8eaf0;
+            --muted: #6b7385;
+            --radius: 12px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            font-family: 'DM Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { opacity: 0.8; }
+        .messages { list-style: none; padding: 0 0 12px; }
+        .messages li {
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            margin-bottom: 8px;
+            font-size: 13px;
+            border: 1px solid;
+        }
+        .messages li.error { background: rgba(255,107,107,0.1); border-color: var(--warn); color: var(--warn); }
+        .messages li.success { background: rgba(0,229,160,0.1); border-color: var(--accent); color: var(--accent); }
+        .messages li.info { background: rgba(91,141,255,0.1); border-color: var(--accent2); color: var(--accent2); }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% block body %}{% endblock %}
+</body>
+</html>

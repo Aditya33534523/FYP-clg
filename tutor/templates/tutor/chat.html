@@ -1,0 +1,519 @@
+{% extends 'tutor/base.html' %}
+{% load static %}
+{% block title %}Chat — RAG AI Tutor{% endblock %}
+
+{% block extra_css %}
+<style>
+body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
+
+/* ── SIDEBAR ── */
+.sidebar {
+    width: 260px; min-width: 260px;
+    background: rgba(18,21,28,0.95);
+    border-right: 1px solid rgba(255,255,255,0.05);
+    display: flex; flex-direction: column;
+    padding: 24px 18px; overflow-y: auto;
+}
+.brand { font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:var(--accent); letter-spacing:-0.5px; margin-bottom:2px; }
+.brand-sub { font-size:10px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:24px; }
+.sidebar-label { font-size:10px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
+.sidebar-user { font-size:12px; color:var(--text); margin-bottom:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.divider { border:none; border-top:1px solid rgba(255,255,255,0.05); margin:16px 0; }
+.marks-group { display:flex; flex-direction:column; gap:6px; margin-bottom:4px; }
+.mark-option { display:flex; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; border-radius:8px; transition:background 0.15s; }
+.mark-option:hover { background:rgba(255,255,255,0.04); }
+.mark-option input[type=radio] { accent-color:var(--accent); }
+.mark-option span { font-size:13px; color:var(--text); }
+.sidebar-btn { width:100%; background:transparent; border:1px solid rgba(255,255,255,0.07); border-radius:var(--radius); color:var(--muted); font-family:'DM Mono',monospace; font-size:12px; padding:10px; cursor:pointer; transition:all 0.2s; margin-bottom:8px; text-align:left; }
+.sidebar-btn:hover { border-color:var(--accent); color:var(--accent); }
+.sidebar-btn.danger:hover { border-color:var(--warn); color:var(--warn); }
+.domains-note { font-size:10px; color:var(--muted); line-height:1.9; }
+.domains-note b { color:var(--text); font-size:10px; }
+.sidebar-bottom { margin-top:auto; }
+
+/* ── MAIN ── */
+.chat-main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.chat-header { padding:18px 28px; border-bottom:1px solid rgba(255,255,255,0.05); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.chat-header-title { font-family:'Syne',sans-serif; font-size:18px; font-weight:700; }
+.live-badge { font-size:10px; color:var(--accent); background:rgba(0,229,160,0.1); padding:3px 10px; border-radius:100px; letter-spacing:0.5px; }
+.chat-messages { flex:1; overflow-y:auto; padding:24px 28px; scroll-behavior:smooth; }
+.chat-messages::-webkit-scrollbar { width:4px; }
+.chat-messages::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:4px; }
+
+/* ── EMPTY STATE ── */
+.empty-state { text-align:center; padding:80px 0; color:var(--muted); }
+.empty-state .icon { font-size:48px; margin-bottom:16px; }
+.empty-state .title { font-family:'Syne',sans-serif; font-size:18px; color:var(--text); margin-bottom:8px; }
+.empty-state .sub { font-size:13px; }
+
+/* ── MESSAGES ── */
+.msg-wrap { margin-bottom:8px; animation:fadeUp 0.3s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
+
+/* User bubble */
+.msg-user { display:flex; justify-content:flex-end; gap:10px; align-items:flex-start; }
+.msg-user .bubble { background:var(--accent2); color:#fff; border-radius:18px 18px 4px 18px; padding:12px 16px; max-width:70%; font-size:14px; line-height:1.5; word-break:break-word; }
+
+/* ── USER ACTION TOOLBAR ── */
+.user-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    padding-right: 42px; /* aligns under bubble, accounting for avatar width */
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.msg-wrap:hover .user-actions { opacity: 1; }
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    color: rgba(255,255,255,0.45);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 4px 9px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.action-btn:hover { background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25); }
+.action-btn.edit-btn:hover  { border-color:var(--accent2); color:var(--accent2); }
+.action-btn.retry-btn:hover { border-color:var(--accent); color:var(--accent); }
+.action-btn.copy-q-btn:hover { border-color:rgba(255,255,255,0.4); color:#fff; }
+
+/* Edit mode inline */
+.edit-mode { display:none; margin-top:8px; padding-right:42px; }
+.edit-mode.active { display:block; }
+.edit-input {
+    width: 100%;
+    background: rgba(91,141,255,0.08);
+    border: 1px solid var(--accent2);
+    border-radius: 12px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+}
+.edit-actions { display:flex; gap:8px; margin-top:8px; justify-content:flex-end; }
+.edit-save-btn { background:var(--accent2); color:#fff; border:none; border-radius:8px; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; padding:7px 16px; cursor:pointer; transition:opacity 0.2s; }
+.edit-save-btn:hover { opacity:0.85; }
+.edit-cancel-btn { background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.1); border-radius:8px; font-family:'DM Mono',monospace; font-size:12px; padding:7px 14px; cursor:pointer; transition:all 0.2s; }
+.edit-cancel-btn:hover { border-color:var(--warn); color:var(--warn); }
+
+/* AI bubble */
+.msg-ai { display:flex; justify-content:flex-start; gap:10px; align-items:flex-start; }
+.msg-ai .bubble { background:rgba(18,21,28,0.9); border:1px solid rgba(255,255,255,0.07); border-radius:18px 18px 18px 4px; padding:16px 20px; max-width:80%; font-size:14px; line-height:1.8; color:var(--text); word-break:break-word; }
+.msg-ai .bubble h2 { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; color:var(--accent); margin:14px 0 6px; }
+.msg-ai .bubble h2:first-child { margin-top:0; }
+.msg-ai .bubble p { margin-bottom:8px; }
+.msg-ai .bubble ul { padding-left:18px; margin-bottom:8px; }
+.msg-ai .bubble li { margin-bottom:4px; }
+.msg-ai .bubble strong { color:var(--accent); }
+
+/* ── AI ACTION TOOLBAR ── */
+.ai-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    margin-left: 42px; /* aligns under bubble, accounting for avatar width */
+    opacity: 0;
+    transition: opacity 0.2s;
+    flex-wrap: wrap;
+}
+.msg-wrap:hover .ai-actions { opacity: 1; }
+.action-btn.copy-btn:hover  { border-color:var(--accent); color:var(--accent); }
+.action-btn.copied { border-color:var(--accent) !important; color:var(--accent) !important; }
+
+.avatar { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; margin-top:2px; }
+.avatar-user { background:var(--accent2); }
+.avatar-ai { background:rgba(18,21,28,0.9); border:1px solid rgba(255,255,255,0.07); }
+
+.conf-badge { display:inline-block; font-size:10px; padding:2px 8px; border-radius:100px; margin-top:8px; letter-spacing:0.5px; }
+.conf-high   { background:rgba(0,229,160,0.12); color:var(--accent); }
+.conf-medium { background:rgba(91,141,255,0.12); color:var(--accent2); }
+.conf-low    { background:rgba(255,107,107,0.12); color:var(--warn); }
+.subject-tag { font-size:10px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
+
+/* ── INPUT AREA ── */
+.chat-input-area { padding:16px 28px 20px; border-top:1px solid rgba(255,255,255,0.05); flex-shrink:0; background:var(--bg); }
+.input-hint { font-size:11px; color:var(--muted); margin-bottom:8px; letter-spacing:0.5px; }
+.input-row { display:flex; gap:10px; }
+.chat-input { flex:1; background:rgba(18,21,28,0.9); border:1px solid rgba(255,255,255,0.08); border-radius:var(--radius); color:var(--text); font-family:'DM Mono',monospace; font-size:14px; padding:13px 16px; outline:none; transition:border-color 0.2s,box-shadow 0.2s; }
+.chat-input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,229,160,0.12); }
+.chat-input::placeholder { color:var(--muted); }
+.send-btn { background:var(--accent); color:#000; border:none; border-radius:var(--radius); font-family:'Syne',sans-serif; font-weight:700; font-size:13px; padding:0 20px; cursor:pointer; transition:opacity 0.2s; white-space:nowrap; }
+.send-btn:hover { opacity:0.85; }
+.send-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+/* Typing */
+.typing-indicator { display:none; align-items:center; gap:10px; margin-bottom:24px; }
+.typing-indicator.active { display:flex; }
+.typing-dots { display:flex; gap:4px; }
+.typing-dots span { width:6px; height:6px; border-radius:50%; background:var(--muted); animation:dot 1.2s infinite; }
+.typing-dots span:nth-child(2) { animation-delay:0.2s; }
+.typing-dots span:nth-child(3) { animation-delay:0.4s; }
+@keyframes dot { 0%,80%,100%{opacity:0.3;transform:scale(0.8);} 40%{opacity:1;transform:scale(1);} }
+
+/* Toast */
+.toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(20px); background:rgba(0,229,160,0.15); border:1px solid var(--accent); color:var(--accent); font-family:'DM Mono',monospace; font-size:12px; padding:8px 20px; border-radius:100px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:999; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+{% endblock %}
+
+{% block body %}
+<!-- SIDEBAR -->
+<div class="sidebar">
+    <div class="brand">🧠 RAG AI Tutor</div>
+    <div class="brand-sub">AI Study Assistant</div>
+    <div class="sidebar-label">Signed in as</div>
+    <div class="sidebar-user">{{ user.email }}</div>
+    <hr class="divider">
+    <div class="sidebar-label">Answer Length</div>
+    <div class="marks-group">
+        <label class="mark-option"><input type="radio" name="marks" value="1" checked><span>🔹 Short (1 Mark)</span></label>
+        <label class="mark-option"><input type="radio" name="marks" value="2"><span>🔷 Medium (2 Marks)</span></label>
+        <label class="mark-option"><input type="radio" name="marks" value="5"><span>🔵 Detailed (5 Marks)</span></label>
+    </div>
+    <hr class="divider">
+    <button class="sidebar-btn danger" id="clearBtn">🗑️  Clear Chat</button>
+    <a href="{% url 'logout' %}"><button class="sidebar-btn">Sign Out</button></a>
+    <div class="sidebar-bottom">
+        <hr class="divider">
+        <div class="domains-note">
+            <b>Domains covered:</b><br>
+            Artificial Intelligence<br>Machine Learning<br>Deep Learning
+        </div>
+    </div>
+</div>
+
+<!-- MAIN -->
+<div class="chat-main">
+    <div class="chat-header">
+        <div class="chat-header-title">Chat</div>
+        <div class="live-badge">● LIVE</div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+        {% if not history %}
+        <div class="empty-state" id="emptyState">
+            <div class="icon">🧠</div>
+            <div class="title">Ready to help you learn</div>
+            <div class="sub">Ask anything about AI, Machine Learning, or Deep Learning</div>
+        </div>
+        {% endif %}
+
+        {% for msg in history %}
+        <div class="msg-wrap" data-question="{{ msg.question|escapejs }}">
+            <!-- User bubble -->
+            <div class="msg-user">
+                <div class="bubble user-text">{{ msg.question }}</div>
+                <div class="avatar avatar-user">👤</div>
+            </div>
+            <!-- User action buttons -->
+            <div class="user-actions">
+                <button class="action-btn copy-q-btn" title="Copy question">📋 Copy</button>
+                <button class="action-btn edit-btn" title="Edit question">✏️ Edit</button>
+                <button class="action-btn retry-btn" title="Retry with same question">🔄 Retry</button>
+            </div>
+            <!-- Inline edit box -->
+            <div class="edit-mode">
+                <textarea class="edit-input" rows="2">{{ msg.question }}</textarea>
+                <div class="edit-actions">
+                    <button class="edit-cancel-btn">Cancel</button>
+                    <button class="edit-save-btn">Send ↑</button>
+                </div>
+            </div>
+        </div>
+        <!-- AI bubble -->
+        <div class="msg-wrap" data-answer="{{ msg.answer|escapejs }}">
+            <div class="msg-ai">
+                <div class="avatar avatar-ai">🤖</div>
+                <div>
+                    <div class="subject-tag">{{ msg.subject }}</div>
+                    <div class="bubble ai-text">{{ msg.answer|safe }}</div>
+                    {% with c=msg.confidence %}
+                    <div class="conf-badge {% if c >= 0.6 %}conf-high{% elif c >= 0.35 %}conf-medium{% else %}conf-low{% endif %}">
+                        Confidence: {% if c >= 0.6 %}High{% elif c >= 0.35 %}Medium{% else %}Low{% endif %} ({{ msg.confidence|floatformat:0 }}%)
+                    </div>
+                    {% endwith %}
+                </div>
+            </div>
+            <!-- AI action buttons -->
+            <div class="ai-actions">
+                <button class="action-btn copy-btn" title="Copy answer">📋 Copy Answer</button>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Typing indicator -->
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="avatar avatar-ai">🤖</div>
+            <div class="bubble" style="padding:12px 16px">
+                <div class="typing-dots"><span></span><span></span><span></span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-input-area">
+        <div class="input-hint">Press <b>Enter</b> to submit</div>
+        <div class="input-row">
+            <input type="text" class="chat-input" id="questionInput"
+                placeholder="e.g. What is backpropagation in neural networks?" autocomplete="off">
+            <button class="send-btn" id="sendBtn">Send ↑</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<script>
+const chatMessages = document.getElementById('chatMessages');
+const questionInput = document.getElementById('questionInput');
+const sendBtn       = document.getElementById('sendBtn');
+const typingIndicator = document.getElementById('typingIndicator');
+const emptyState    = document.getElementById('emptyState');
+const clearBtn      = document.getElementById('clearBtn');
+const toast         = document.getElementById('toast');
+const CSRF          = '{{ csrf_token }}';
+
+// ── UTILS ──
+function scrollBottom() { chatMessages.scrollTop = chatMessages.scrollHeight; }
+scrollBottom();
+
+function getMarks() {
+    const checked = document.querySelector('input[name="marks"]:checked');
+    return checked ? parseInt(checked.value) : 1;
+}
+function confClass(c) { return c>=0.6?'conf-high':c>=0.35?'conf-medium':'conf-low'; }
+function confLabel(c) { return c>=0.6?'High':c>=0.35?'Medium':'Low'; }
+function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+// ── COPY TEXT (strips HTML tags for AI answers) ──
+function stripHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+}
+
+// ── BUILD USER MSG BLOCK ──
+function buildUserBlock(question) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-wrap';
+    wrap.dataset.question = question;
+    wrap.innerHTML = `
+        <div class="msg-user">
+            <div class="bubble user-text">${escHtml(question)}</div>
+            <div class="avatar avatar-user">👤</div>
+        </div>
+        <div class="user-actions">
+            <button class="action-btn copy-q-btn">📋 Copy</button>
+            <button class="action-btn edit-btn">✏️ Edit</button>
+            <button class="action-btn retry-btn">🔄 Retry</button>
+        </div>
+        <div class="edit-mode">
+            <textarea class="edit-input" rows="2">${escHtml(question)}</textarea>
+            <div class="edit-actions">
+                <button class="edit-cancel-btn">Cancel</button>
+                <button class="edit-save-btn">Send ↑</button>
+            </div>
+        </div>`;
+    attachUserActions(wrap);
+    return wrap;
+}
+
+// ── BUILD AI MSG BLOCK ──
+function buildAiBlock(data) {
+    const cc  = confClass(data.confidence);
+    const cl  = confLabel(data.confidence);
+    const pct = Math.round(data.confidence * 100);
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-wrap';
+    wrap.innerHTML = `
+        <div class="msg-ai">
+            <div class="avatar avatar-ai">🤖</div>
+            <div>
+                <div class="subject-tag">${escHtml(data.subject)}</div>
+                <div class="bubble ai-text">${data.answer}</div>
+                <div class="conf-badge ${cc}">Confidence: ${cl} (${pct}%)</div>
+            </div>
+        </div>
+        <div class="ai-actions">
+            <button class="action-btn copy-btn">📋 Copy Answer</button>
+        </div>`;
+    attachAiActions(wrap);
+    return wrap;
+}
+
+// ── ATTACH USER ACTIONS (Edit, Copy Q, Retry) ──
+function attachUserActions(wrap) {
+    const copyQBtn  = wrap.querySelector('.copy-q-btn');
+    const editBtn   = wrap.querySelector('.edit-btn');
+    const retryBtn  = wrap.querySelector('.retry-btn');
+    const editMode  = wrap.querySelector('.edit-mode');
+    const editInput = wrap.querySelector('.edit-input');
+    const saveBtn   = wrap.querySelector('.edit-save-btn');
+    const cancelBtn = wrap.querySelector('.edit-cancel-btn');
+
+    // Copy question text
+    copyQBtn.addEventListener('click', () => {
+        const text = wrap.querySelector('.user-text').textContent;
+        navigator.clipboard.writeText(text).then(() => showToast('✅ Question copied!'));
+    });
+
+    // Open edit mode
+    editBtn.addEventListener('click', () => {
+        editMode.classList.add('active');
+        editInput.focus();
+        editInput.selectionStart = editInput.selectionEnd = editInput.value.length;
+    });
+
+    // Cancel edit
+    cancelBtn.addEventListener('click', () => {
+        editMode.classList.remove('active');
+    });
+
+    // Save edit → re-send
+    saveBtn.addEventListener('click', () => {
+        const newQ = editInput.value.trim();
+        if (!newQ) return;
+        editMode.classList.remove('active');
+        // Update bubble text
+        wrap.querySelector('.user-text').textContent = newQ;
+        wrap.dataset.question = newQ;
+        editInput.value = newQ;
+        // Remove the next AI sibling and re-ask
+        const nextSibling = wrap.nextElementSibling;
+        if (nextSibling && nextSibling.querySelector('.msg-ai')) {
+            nextSibling.remove();
+        }
+        askAndInsertAfter(newQ, wrap);
+    });
+
+    // Also save on Enter (not Shift+Enter)
+    editInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
+        if (e.key === 'Escape') cancelBtn.click();
+    });
+
+    // Retry: re-send exact same question
+    retryBtn.addEventListener('click', () => {
+        const q = wrap.dataset.question;
+        const nextSibling = wrap.nextElementSibling;
+        if (nextSibling && nextSibling.querySelector('.msg-ai')) {
+            nextSibling.remove();
+        }
+        askAndInsertAfter(q, wrap);
+    });
+}
+
+// ── ATTACH AI ACTIONS (Copy Answer) ──
+function attachAiActions(wrap) {
+    const copyBtn = wrap.querySelector('.copy-btn');
+    copyBtn.addEventListener('click', () => {
+        const html  = wrap.querySelector('.ai-text').innerHTML;
+        const plain = stripHtml(html);
+        navigator.clipboard.writeText(plain).then(() => {
+            copyBtn.textContent = '✅ Copied!';
+            copyBtn.classList.add('copied');
+            showToast('✅ Answer copied!');
+            setTimeout(() => {
+                copyBtn.textContent = '📋 Copy Answer';
+                copyBtn.classList.remove('copied');
+            }, 2000);
+        });
+    });
+}
+
+// Attach actions to history messages rendered by Django
+document.querySelectorAll('.msg-wrap').forEach(wrap => {
+    if (wrap.querySelector('.user-actions')) attachUserActions(wrap);
+    if (wrap.querySelector('.ai-actions'))   attachAiActions(wrap);
+});
+
+// ── ASK API ──
+async function askAPI(question, marks) {
+    const res = await fetch('/api/ask/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ question, marks })
+    });
+    const data = await res.json();
+    return { data, ok: res.ok };
+}
+
+// ── INSERT AI RESPONSE AFTER A USER BLOCK ──
+async function askAndInsertAfter(question, userWrap) {
+    sendBtn.disabled = true;
+    typingIndicator.classList.add('active');
+    // Move typing indicator after userWrap
+    userWrap.insertAdjacentElement('afterend', typingIndicator);
+    scrollBottom();
+
+    try {
+        const { data, ok } = await askAPI(question, getMarks());
+        typingIndicator.classList.remove('active');
+        chatMessages.appendChild(typingIndicator); // move back to end
+
+        if (ok) {
+            const aiBlock = buildAiBlock(data);
+            userWrap.insertAdjacentElement('afterend', aiBlock);
+        } else {
+            const errBlock = document.createElement('div');
+            errBlock.className = 'msg-wrap';
+            errBlock.innerHTML = `<div class="msg-ai"><div class="avatar avatar-ai">🤖</div><div class="bubble" style="color:var(--warn)">${data.error||'Error occurred.'}</div></div>`;
+            userWrap.insertAdjacentElement('afterend', errBlock);
+        }
+    } catch(e) {
+        typingIndicator.classList.remove('active');
+        chatMessages.appendChild(typingIndicator);
+        const errBlock = document.createElement('div');
+        errBlock.className = 'msg-wrap';
+        errBlock.innerHTML = `<div class="msg-ai"><div class="avatar avatar-ai">🤖</div><div class="bubble" style="color:var(--warn)">Network error. Please try again.</div></div>`;
+        userWrap.insertAdjacentElement('afterend', errBlock);
+    }
+
+    sendBtn.disabled = false;
+    scrollBottom();
+    questionInput.focus();
+}
+
+// ── SEND NEW QUESTION ──
+async function sendQuestion() {
+    const q = questionInput.value.trim();
+    if (!q) return;
+    if (emptyState) emptyState.style.display = 'none';
+    questionInput.value = '';
+
+    const userBlock = buildUserBlock(q);
+    chatMessages.insertBefore(userBlock, typingIndicator);
+    await askAndInsertAfter(q, userBlock);
+}
+
+sendBtn.addEventListener('click', sendQuestion);
+questionInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+});
+
+// ── CLEAR CHAT ──
+clearBtn.addEventListener('click', async () => {
+    if (!confirm('Clear all chat history?')) return;
+    const res = await fetch('/api/clear/', { method:'POST', headers:{'X-CSRFToken':CSRF} });
+    if (res.ok) location.reload();
+});
+</script>
+{% endblock %}

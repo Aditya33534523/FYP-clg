@@ -1,0 +1,8 @@
+django>=4.2
+markdown
+sentence-transformers
+faiss-cpu
+numpy
+pandas
+requests
+bcrypt
