@@ -130,8 +130,18 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/chat/'
 LOGOUT_REDIRECT_URL = '/login/'
 
-# Session
-SESSION_COOKIE_AGE = 86400
+# Session Configuration
+SESSION_COOKIE_AGE = 86400  # 24 hours in seconds
+SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Session expires after browser close
+SESSION_COOKIE_SAMESITE = 'Lax'  # Protect against CSRF attacks
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Store sessions in database
+SESSION_SERIALIZER = 'django.contrib.sessions.serializers.JSONSerializer'
+
+# Session tracking for user activity
+SESSION_TRACK_USER_ACTIVITY = True
+SESSION_ACTIVITY_TIMEOUT = 3600  # 1 hour of inactivity timeout
 
 # RAG Engine (lazy loaded)
 RAG_ENGINE = None

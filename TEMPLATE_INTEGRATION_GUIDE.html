@@ -1,0 +1,345 @@
+<!-- HTML Template Integration Examples for Session Handling & Typo Correction -->
+
+<!-- FILE: tutor/templates/tutor/chat.html (Integration Snippets) -->
+
+<!-- 1. ADD TO <head> SECTION - CSS Stylesheet -->
+<link rel="stylesheet" href="{% static 'tutor/typo_correction.css' %}">
+
+<!-- ============================================================================ -->
+
+<!-- 2. ADD TO NAVBAR/HEADER - Session Statistics Widget -->
+<div class="session-stats">
+    <h4>📊 Session Info</h4>
+    <div class="stat-row">
+        <span class="stat-label">Session Active:</span>
+        <span class="stat-value">
+            <span class="activity-indicator"></span>
+            {{ session_stats.session_start|truncatewords:2 }}
+        </span>
+    </div>
+    <div class="stat-row">
+        <span class="stat-label">Questions Asked:</span>
+        <span class="stat-value query-counter">
+            <strong>{{ session_stats.total_queries }}</strong>
+        </span>
+    </div>
+    <div class="stat-row">
+        <span class="stat-label">Auto-Corrections Applied:</span>
+        <span class="stat-value">{{ session_stats.corrections_applied }}</span>
+    </div>
+    {% if session_stats.last_activity %}
+    <div class="stat-row">
+        <span class="stat-label">Last Activity:</span>
+        <span class="stat-value">
+            {{ session_stats.last_activity|truncatewords:2 }}
+        </span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ============================================================================ -->
+
+<!-- 3. ADD TO CHAT MESSAGE DISPLAY - Correction Notice -->
+<div id="chat-messages">
+    {% for message in history %}
+    <div class="chat-message">
+        <!-- Original Question -->
+        <div class="user-message">
+            <strong>You:</strong> {{ message.question }}
+        </div>
+        
+        <!-- AUTO-CORRECTION NOTICE (if corrections were made) -->
+        {% if message.correction_notice %}
+        <div class="correction-notice">
+            <strong>Auto-corrected:</strong>
+            {{ message.correction_details|safe }}
+        </div>
+        {% endif %}
+        
+        <!-- AI Response -->
+        <div class="ai-message">
+            <strong>AI Tutor:</strong>
+            {{ message.answer|safe }}
+        </div>
+        
+        <!-- Metadata -->
+        <div class="message-meta">
+            <span class="confidence conf-{{ message.confidence_class }}">
+                Confidence: {{ message.confidence_label }}
+            </span>
+            <span class="subject">Subject: {{ message.subject }}</span>
+            <span class="timestamp">{{ message.timestamp|date:"g:i A" }}</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ============================================================================ -->
+
+<!-- 4. ADD TO QUERY INPUT FORM - Display Typing Corrections (Optional) -->
+<div id="query-form" class="chat-form">
+    <form id="question-form" method="post" action="{% url 'ask' %}">
+        {% csrf_token %}
+        
+        <!-- Question Input -->
+        <input 
+            type="text" 
+            id="question-input"
+            name="question" 
+            class="chat-input"
+            placeholder="Ask me about AI, ML, or Deep Learning... (e.g., 'What is KNN?')"
+            autocomplete="off"
+        >
+        
+        <!-- Live Correction Preview (Optional) -->
+        <div id="correction-preview" class="correction-notice" style="display:none;">
+            <strong>Preview:</strong> <span id="preview-text"></span>
+        </div>
+        
+        <!-- Marks Selection -->
+        <select id="marks" name="marks" class="marks-select">
+            <option value="1">🔹 Short (1 Mark)</option>
+            <option value="2">🔷 Medium (2 Marks)</option>
+            <option value="5">🔵 Detailed (5 Marks)</option>
+        </select>
+        
+        <button type="submit" class="btn btn-primary">Send</button>
+    </form>
+</div>
+
+<!-- ============================================================================ -->
+
+<!-- 5. SESSION TIMEOUT WARNING - Display if Session Inactive -->
+{% if session_timeout_warning %}
+<div class="session-timeout-warning">
+    <strong>⚠️ Session Inactive</strong>
+    Your session has been inactive for a while. 
+    <a href="{% url 'chat' %}">Click here to refresh</a>
+</div>
+{% endif %}
+
+<!-- ============================================================================ -->
+
+<!-- 6. JAVASCRIPT - Handle Typo Correction Display & Live Preview (Optional) -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const questionInput = document.getElementById('question-input');
+    const correctionPreview = document.getElementById('correction-preview');
+    const previewText = document.getElementById('preview-text');
+    
+    // Live correction preview
+    questionInput.addEventListener('input', function() {
+        const input = this.value;
+        
+        // Example: Show if user typed common typos
+        const commonTypos = {
+            'ken': 'knn',
+            'can': 'cnn',
+            'sigmod': 'sigmoid',
+            'transfrmer': 'transformer'
+        };
+        
+        let foundTypos = [];
+        for (const [typo, correct] of Object.entries(commonTypos)) {
+            if (input.toLowerCase().includes(typo)) {
+                foundTypos.push(`'${typo}' → '${correct}'`);
+            }
+        }
+        
+        if (foundTypos.length > 0) {
+            previewText.textContent = foundTypos.join(', ');
+            correctionPreview.style.display = 'block';
+        } else {
+            correctionPreview.style.display = 'none';
+        }
+    });
+});
+
+// Handle form submission and display response with corrections
+document.getElementById('question-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const question = document.getElementById('question-input').value;
+    const marks = document.getElementById('marks').value;
+    
+    try {
+        const response = await fetch('{% url "ask" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                question: question,
+                marks: marks
+            })
+        });
+        
+        const data = await response.json();
+        
+        // Display correction notice if corrections were made
+        if (data.corrections && Object.keys(data.corrections).length > 0) {
+            const correctionNotice = document.createElement('div');
+            correctionNotice.className = 'correction-notice';
+            correctionNotice.innerHTML = `
+                <strong>✏️ Auto-corrected:</strong>
+                ${Object.entries(data.corrections)
+                    .map(([orig, corr]) => `'${orig}' → '${corr}'`)
+                    .join(', ')}
+            `;
+            
+            // Insert correction notice at top of messages
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.insertBefore(correctionNotice, messagesContainer.firstChild);
+        }
+        
+        // Update session stats display
+        if (data.session_stats) {
+            updateSessionStats(data.session_stats);
+        }
+        
+        // Clear input and add message to chat
+        document.getElementById('question-input').value = '';
+        addMessageToChat(data);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error submitting question. Please try again.');
+    }
+});
+
+// Update session statistics display
+function updateSessionStats(stats) {
+    const queryCounter = document.querySelector('.query-counter strong');
+    const correctionCounter = document.querySelector('[data-corrections]');
+    
+    if (queryCounter) {
+        queryCounter.textContent = stats.total_queries;
+    }
+    if (correctionCounter) {
+        correctionCounter.textContent = stats.corrections_applied;
+    }
+}
+
+// Add message to chat display
+function addMessageToChat(data) {
+    const messagesContainer = document.getElementById('chat-messages');
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message';
+    messageDiv.innerHTML = `
+        <div class="ai-message">
+            <strong>AI Tutor:</strong>
+            ${data.answer}
+        </div>
+        <div class="message-meta">
+            <span class="confidence conf-${data.conf_class}">
+                Confidence: ${data.conf_label}
+            </span>
+            <span class="subject">Subject: ${data.subject}</span>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    
+    // Scroll to bottom
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+</script>
+
+<!-- ============================================================================ -->
+
+<!-- 7. CSS CLASSES REFERENCE -->
+<!--
+Available CSS classes from typo_correction.css:
+
+Correction Notices:
+  .correction-notice - Blue notice box for corrections
+  .corrected-term - Badge for corrected term
+  .original-term - Strikethrough for original term
+
+Session Information:
+  .session-stats - Purple gradient widget
+  .stat-row - Individual stat row
+  .stat-label - Label text
+  .stat-value - Value text
+
+Status Indicators:
+  .activity-indicator - Pulsing green dot
+  .activity-indicator.inactive - Red dot (inactive)
+
+Warnings:
+  .session-timeout-warning - Yellow warning box
+  .query-counter - Blue information badge
+
+All are responsive (mobile-friendly).
+-->
+
+<!-- ============================================================================ -->
+
+<!-- 8. CONTEXT VARIABLES FROM DJANGO VIEW -->
+<!--
+Available in template context:
+
+From chat_view:
+  - history: QuerySet of ChatHistory objects
+  - user: Current User object
+  - session_stats: Dict with:
+    * session_id: Session identifier
+    * session_start: ISO timestamp
+    * last_activity: ISO timestamp
+    * total_queries: Integer
+    * corrections_applied: Integer
+    * user_ip: IP address
+
+From API response (JavaScript):
+  - corrections: Dict[str, str] - Original → Corrected terms
+  - correction_info: HTML string for display
+  - original_question: User input
+  - corrected_question: Processed query
+-->
+
+<!-- ============================================================================ -->
+
+<!-- 9. DJANGO TEMPLATE TAGS REQUIRED -->
+<!--
+Ensure your base.html has:
+
+{% load static %}
+
+And your chat.html includes:
+{% extends 'tutor/base.html' %}
+{% load static %}
+-->
+
+<!-- ============================================================================ -->
+
+<!-- 10. EXAMPLE COMPLETE MESSAGE DISPLAY -->
+<div class="example-message">
+    <!-- Correction Notice -->
+    <div class="correction-notice">
+        <strong>✏️ Auto-corrected:</strong>
+        'ken' → 'knn'
+    </div>
+    
+    <!-- User Question -->
+    <div class="user-message">
+        <strong>You:</strong> What is ken algorithm?
+    </div>
+    
+    <!-- AI Response -->
+    <div class="ai-message">
+        <strong>AI Tutor:</strong>
+        <p><strong>K-Nearest Neighbors (KNN)</strong> is a simple, easy-to-implement supervised 
+        learning algorithm that can be used to solve regression and classification problems...</p>
+    </div>
+    
+    <!-- Metadata -->
+    <div class="message-meta">
+        <span class="confidence conf-high">Confidence: High</span>
+        <span class="subject">Subject: Machine Learning</span>
+        <span class="timestamp">2:30 PM</span>
+    </div>
+</div>
+
+<!-- That's it! Session handling and typo correction work automatically. -->
