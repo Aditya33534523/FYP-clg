@@ -9,4 +9,5 @@ urlpatterns = [
     path('chat/', views.chat_view, name='chat'),
     path('api/ask/', views.ask_view, name='ask'),
     path('api/clear/', views.clear_history_view, name='clear_history'),
+    path('api/ping/', views.ping_view, name='ping'),   # session-check endpoint
 ]

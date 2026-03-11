@@ -61,7 +61,7 @@ body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
     gap: 6px;
     margin-top: 5px;
     margin-bottom: 10px;
-    padding-right: 42px; /* aligns under bubble, accounting for avatar width */
+    padding-right: 42px;
     opacity: 0;
     transition: opacity 0.2s;
 }
@@ -123,7 +123,7 @@ body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
     display: flex;
     gap: 6px;
     margin-top: 6px;
-    margin-left: 42px; /* aligns under bubble, accounting for avatar width */
+    margin-left: 42px;
     opacity: 0;
     transition: opacity 0.2s;
     flex-wrap: wrap;
@@ -165,10 +165,52 @@ body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
 /* Toast */
 .toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(20px); background:rgba(0,229,160,0.15); border:1px solid var(--accent); color:var(--accent); font-family:'DM Mono',monospace; font-size:12px; padding:8px 20px; border-radius:100px; opacity:0; transition:all 0.3s; pointer-events:none; z-index:999; }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* Session expired overlay */
+#session-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,12,16,0.92);
+    backdrop-filter: blur(12px);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    font-family: 'Syne', sans-serif;
+}
+#session-overlay.show { display: flex; }
+#session-overlay .ol-icon { font-size: 52px; }
+#session-overlay .ol-title { font-size: 22px; font-weight: 700; color: var(--text); }
+#session-overlay .ol-sub { font-size: 13px; color: var(--muted); font-family: 'DM Mono', monospace; }
+#session-overlay .ol-btn {
+    margin-top: 8px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px 32px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+#session-overlay .ol-btn:hover { opacity: 0.85; }
 </style>
 {% endblock %}
 
 {% block body %}
+
+{# ── SESSION-EXPIRED OVERLAY (shown by JS when back-button cache hit is detected) ── #}
+<div id="session-overlay">
+    <div class="ol-icon">🔒</div>
+    <div class="ol-title">Session Ended</div>
+    <div class="ol-sub">You've been signed out. Please log in again.</div>
+    <button class="ol-btn" onclick="window.location.replace('/login/')">Go to Login →</button>
+</div>
+
 <!-- SIDEBAR -->
 <div class="sidebar">
     <div class="brand">🧠 RAG AI Tutor</div>
@@ -212,18 +254,15 @@ body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
 
         {% for msg in history %}
         <div class="msg-wrap" data-question="{{ msg.question|escapejs }}">
-            <!-- User bubble -->
             <div class="msg-user">
                 <div class="bubble user-text">{{ msg.question }}</div>
                 <div class="avatar avatar-user">👤</div>
             </div>
-            <!-- User action buttons -->
             <div class="user-actions">
                 <button class="action-btn copy-q-btn" title="Copy question">📋 Copy</button>
                 <button class="action-btn edit-btn" title="Edit question">✏️ Edit</button>
                 <button class="action-btn retry-btn" title="Retry with same question">🔄 Retry</button>
             </div>
-            <!-- Inline edit box -->
             <div class="edit-mode">
                 <textarea class="edit-input" rows="2">{{ msg.question }}</textarea>
                 <div class="edit-actions">
@@ -232,7 +271,6 @@ body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
                 </div>
             </div>
         </div>
-        <!-- AI bubble -->
         <div class="msg-wrap" data-answer="{{ msg.answer|escapejs }}">
             <div class="msg-ai">
                 <div class="avatar avatar-ai">🤖</div>
@@ -246,14 +284,12 @@ body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
                     {% endwith %}
                 </div>
             </div>
-            <!-- AI action buttons -->
             <div class="ai-actions">
                 <button class="action-btn copy-btn" title="Copy answer">📋 Copy Answer</button>
             </div>
         </div>
         {% endfor %}
 
-        <!-- Typing indicator -->
         <div class="typing-indicator" id="typingIndicator">
             <div class="avatar avatar-ai">🤖</div>
             <div class="bubble" style="padding:12px 16px">
@@ -272,18 +308,65 @@ body { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
     </div>
 </div>
 
-<!-- Toast notification -->
 <div class="toast" id="toast"></div>
 
 <script>
-const chatMessages = document.getElementById('chatMessages');
-const questionInput = document.getElementById('questionInput');
-const sendBtn       = document.getElementById('sendBtn');
+// ══════════════════════════════════════════════════════════════
+// BACK-BUTTON / SESSION GUARD
+// Fires on every page show — including BFCache (back-forward cache) hits.
+// If the page is loaded from cache after logout, we detect it and block.
+// ══════════════════════════════════════════════════════════════
+(function() {
+    // 1. Mark this page as an authenticated page in sessionStorage.
+    //    sessionStorage is tab-scoped and cleared when the tab/window closes,
+    //    but persists during a session — perfect for this use-case.
+    sessionStorage.setItem('chat_page_loaded', 'true');
+
+    // 2. On pageshow (fires on normal load AND back-button BFCache restore)
+    window.addEventListener('pageshow', function(e) {
+        // e.persisted = true means this is a BFCache / back-button hit
+        if (e.persisted) {
+            // Silently ping the server to verify if the session is still valid
+            fetch('/api/ping/', { method: 'GET', credentials: 'same-origin' })
+                .then(function(res) {
+                    if (res.status === 401 || res.status === 302 || res.redirected) {
+                        showSessionOverlay();
+                    }
+                })
+                .catch(function() {
+                    // Network error — show overlay to be safe
+                    showSessionOverlay();
+                });
+        }
+    });
+
+    // 3. On regular load, also verify session via a meta tag we embed below
+    //    (belt-and-suspenders: Django already redirects, but this catches edge cases)
+    var authMeta = document.querySelector('meta[name="x-auth-required"]');
+    if (authMeta) {
+        // Page rendered by Django means session was valid at render time — all good.
+        // Push a history entry so the back button lands here, not on logout URL.
+        if (history.state === null) {
+            history.replaceState({ page: 'chat' }, '', window.location.href);
+        }
+    }
+
+    function showSessionOverlay() {
+        var overlay = document.getElementById('session-overlay');
+        if (overlay) overlay.classList.add('show');
+    }
+})();
+</script>
+
+<script>
+const chatMessages   = document.getElementById('chatMessages');
+const questionInput  = document.getElementById('questionInput');
+const sendBtn        = document.getElementById('sendBtn');
 const typingIndicator = document.getElementById('typingIndicator');
-const emptyState    = document.getElementById('emptyState');
-const clearBtn      = document.getElementById('clearBtn');
-const toast         = document.getElementById('toast');
-const CSRF          = '{{ csrf_token }}';
+const emptyState     = document.getElementById('emptyState');
+const clearBtn       = document.getElementById('clearBtn');
+const toast          = document.getElementById('toast');
+const CSRF           = '{{ csrf_token }}';
 
 // ── UTILS ──
 function scrollBottom() { chatMessages.scrollTop = chatMessages.scrollHeight; }
@@ -303,14 +386,12 @@ function showToast(msg) {
     setTimeout(() => toast.classList.remove('show'), 2000);
 }
 
-// ── COPY TEXT (strips HTML tags for AI answers) ──
 function stripHtml(html) {
     const tmp = document.createElement('div');
     tmp.innerHTML = html;
     return tmp.textContent || tmp.innerText || '';
 }
 
-// ── BUILD USER MSG BLOCK ──
 function buildUserBlock(question) {
     const wrap = document.createElement('div');
     wrap.className = 'msg-wrap';
@@ -336,7 +417,6 @@ function buildUserBlock(question) {
     return wrap;
 }
 
-// ── BUILD AI MSG BLOCK ──
 function buildAiBlock(data) {
     const cc  = confClass(data.confidence);
     const cl  = confLabel(data.confidence);
@@ -359,7 +439,6 @@ function buildAiBlock(data) {
     return wrap;
 }
 
-// ── ATTACH USER ACTIONS (Edit, Copy Q, Retry) ──
 function attachUserActions(wrap) {
     const copyQBtn  = wrap.querySelector('.copy-q-btn');
     const editBtn   = wrap.querySelector('.edit-btn');
@@ -369,59 +448,39 @@ function attachUserActions(wrap) {
     const saveBtn   = wrap.querySelector('.edit-save-btn');
     const cancelBtn = wrap.querySelector('.edit-cancel-btn');
 
-    // Copy question text
     copyQBtn.addEventListener('click', () => {
         const text = wrap.querySelector('.user-text').textContent;
         navigator.clipboard.writeText(text).then(() => showToast('✅ Question copied!'));
     });
-
-    // Open edit mode
     editBtn.addEventListener('click', () => {
         editMode.classList.add('active');
         editInput.focus();
         editInput.selectionStart = editInput.selectionEnd = editInput.value.length;
     });
-
-    // Cancel edit
-    cancelBtn.addEventListener('click', () => {
-        editMode.classList.remove('active');
-    });
-
-    // Save edit → re-send
+    cancelBtn.addEventListener('click', () => { editMode.classList.remove('active'); });
     saveBtn.addEventListener('click', () => {
         const newQ = editInput.value.trim();
         if (!newQ) return;
         editMode.classList.remove('active');
-        // Update bubble text
         wrap.querySelector('.user-text').textContent = newQ;
         wrap.dataset.question = newQ;
         editInput.value = newQ;
-        // Remove the next AI sibling and re-ask
-        const nextSibling = wrap.nextElementSibling;
-        if (nextSibling && nextSibling.querySelector('.msg-ai')) {
-            nextSibling.remove();
-        }
+        const next = wrap.nextElementSibling;
+        if (next && next.querySelector('.msg-ai')) next.remove();
         askAndInsertAfter(newQ, wrap);
     });
-
-    // Also save on Enter (not Shift+Enter)
     editInput.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
         if (e.key === 'Escape') cancelBtn.click();
     });
-
-    // Retry: re-send exact same question
     retryBtn.addEventListener('click', () => {
         const q = wrap.dataset.question;
-        const nextSibling = wrap.nextElementSibling;
-        if (nextSibling && nextSibling.querySelector('.msg-ai')) {
-            nextSibling.remove();
-        }
+        const next = wrap.nextElementSibling;
+        if (next && next.querySelector('.msg-ai')) next.remove();
         askAndInsertAfter(q, wrap);
     });
 }
 
-// ── ATTACH AI ACTIONS (Copy Answer) ──
 function attachAiActions(wrap) {
     const copyBtn = wrap.querySelector('.copy-btn');
     copyBtn.addEventListener('click', () => {
@@ -439,35 +498,39 @@ function attachAiActions(wrap) {
     });
 }
 
-// Attach actions to history messages rendered by Django
 document.querySelectorAll('.msg-wrap').forEach(wrap => {
     if (wrap.querySelector('.user-actions')) attachUserActions(wrap);
     if (wrap.querySelector('.ai-actions'))   attachAiActions(wrap);
 });
 
-// ── ASK API ──
 async function askAPI(question, marks) {
     const res = await fetch('/api/ask/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
         body: JSON.stringify({ question, marks })
     });
+    // If redirected to login, session expired mid-chat
+    if (res.redirected || res.status === 302 || res.status === 401 || res.status === 403) {
+        window.location.replace('/login/');
+        return null;
+    }
     const data = await res.json();
     return { data, ok: res.ok };
 }
 
-// ── INSERT AI RESPONSE AFTER A USER BLOCK ──
 async function askAndInsertAfter(question, userWrap) {
     sendBtn.disabled = true;
     typingIndicator.classList.add('active');
-    // Move typing indicator after userWrap
     userWrap.insertAdjacentElement('afterend', typingIndicator);
     scrollBottom();
 
     try {
-        const { data, ok } = await askAPI(question, getMarks());
+        const result = await askAPI(question, getMarks());
+        if (!result) return; // redirected to login
+        const { data, ok } = result;
+
         typingIndicator.classList.remove('active');
-        chatMessages.appendChild(typingIndicator); // move back to end
+        chatMessages.appendChild(typingIndicator);
 
         if (ok) {
             const aiBlock = buildAiBlock(data);
@@ -492,13 +555,11 @@ async function askAndInsertAfter(question, userWrap) {
     questionInput.focus();
 }
 
-// ── SEND NEW QUESTION ──
 async function sendQuestion() {
     const q = questionInput.value.trim();
     if (!q) return;
     if (emptyState) emptyState.style.display = 'none';
     questionInput.value = '';
-
     const userBlock = buildUserBlock(q);
     chatMessages.insertBefore(userBlock, typingIndicator);
     await askAndInsertAfter(q, userBlock);
@@ -509,7 +570,6 @@ questionInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
 });
 
-// ── CLEAR CHAT ──
 clearBtn.addEventListener('click', async () => {
     if (!confirm('Clear all chat history?')) return;
     const res = await fetch('/api/clear/', { method:'POST', headers:{'X-CSRFToken':CSRF} });
