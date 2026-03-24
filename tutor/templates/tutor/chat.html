@@ -377,7 +377,7 @@ function getMarks() {
     return checked ? parseInt(checked.value) : 1;
 }
 function confClass(c) { return c>=0.6?'conf-high':c>=0.35?'conf-medium':'conf-low'; }
-function confLabel(c) { return c>=0.6?'High':c>=0.35?'Medium':'Low'; }
+function confLabel(c) { return c>=0.6?'Highly Relevant ✓':c>=0.35?'Relevant':'Partially Relevant'; }
 function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function showToast(msg) {
@@ -467,7 +467,7 @@ function attachUserActions(wrap) {
         editInput.value = newQ;
         const next = wrap.nextElementSibling;
         if (next && next.querySelector('.msg-ai')) next.remove();
-        askAndInsertAfter(newQ, wrap);
+        askStreamAndInsertAfter(newQ, wrap);
     });
     editInput.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveBtn.click(); }
@@ -477,7 +477,7 @@ function attachUserActions(wrap) {
         const q = wrap.dataset.question;
         const next = wrap.nextElementSibling;
         if (next && next.querySelector('.msg-ai')) next.remove();
-        askAndInsertAfter(q, wrap);
+        askStreamAndInsertAfter(q, wrap);
     });
 }
 
@@ -503,44 +503,127 @@ document.querySelectorAll('.msg-wrap').forEach(wrap => {
     if (wrap.querySelector('.ai-actions'))   attachAiActions(wrap);
 });
 
-async function askAPI(question, marks) {
-    const res = await fetch('/api/ask/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-        body: JSON.stringify({ question, marks })
-    });
-    // If redirected to login, session expired mid-chat
-    if (res.redirected || res.status === 302 || res.status === 401 || res.status === 403) {
-        window.location.replace('/login/');
-        return null;
-    }
-    const data = await res.json();
-    return { data, ok: res.ok };
+// ── STREAMING API ──
+function buildStreamingAiBlock() {
+    // Create an empty AI bubble ready to receive tokens
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-wrap';
+    wrap.innerHTML = `
+        <div class="msg-ai">
+            <div class="avatar avatar-ai">🤖</div>
+            <div>
+                <div class="subject-tag" style="display:none"></div>
+                <div class="bubble ai-text"></div>
+                <div class="conf-badge" style="display:none"></div>
+            </div>
+        </div>
+        <div class="ai-actions" style="display:none">
+            <button class="action-btn copy-btn">📋 Copy Answer</button>
+        </div>`;
+    return wrap;
 }
 
-async function askAndInsertAfter(question, userWrap) {
+async function askStreamAndInsertAfter(question, userWrap) {
     sendBtn.disabled = true;
     typingIndicator.classList.add('active');
     userWrap.insertAdjacentElement('afterend', typingIndicator);
     scrollBottom();
 
     try {
-        const result = await askAPI(question, getMarks());
-        if (!result) return; // redirected to login
-        const { data, ok } = result;
+        const res = await fetch('/api/ask-stream/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ question, marks: getMarks() })
+        });
 
+        // Session expired?
+        if (res.redirected || res.status === 302 || res.status === 401 || res.status === 403) {
+            window.location.replace('/login/');
+            return;
+        }
+
+        // Non-streaming error (validation failure)
+        if (!res.ok) {
+            typingIndicator.classList.remove('active');
+            chatMessages.appendChild(typingIndicator);
+            let errMsg = 'Error occurred.';
+            try { const d = await res.json(); errMsg = d.error || errMsg; } catch(_){}
+            const errBlock = document.createElement('div');
+            errBlock.className = 'msg-wrap';
+            errBlock.innerHTML = `<div class="msg-ai"><div class="avatar avatar-ai">🤖</div><div class="bubble" style="color:var(--warn)">${escHtml(errMsg)}</div></div>`;
+            userWrap.insertAdjacentElement('afterend', errBlock);
+            sendBtn.disabled = false;
+            scrollBottom();
+            questionInput.focus();
+            return;
+        }
+
+        // Hide typing indicator, show streaming AI bubble
         typingIndicator.classList.remove('active');
         chatMessages.appendChild(typingIndicator);
 
-        if (ok) {
-            const aiBlock = buildAiBlock(data);
-            userWrap.insertAdjacentElement('afterend', aiBlock);
-        } else {
-            const errBlock = document.createElement('div');
-            errBlock.className = 'msg-wrap';
-            errBlock.innerHTML = `<div class="msg-ai"><div class="avatar avatar-ai">🤖</div><div class="bubble" style="color:var(--warn)">${data.error||'Error occurred.'}</div></div>`;
-            userWrap.insertAdjacentElement('afterend', errBlock);
+        const aiBlock = buildStreamingAiBlock();
+        userWrap.insertAdjacentElement('afterend', aiBlock);
+        const textEl = aiBlock.querySelector('.ai-text');
+        const subjectEl = aiBlock.querySelector('.subject-tag');
+        const confEl = aiBlock.querySelector('.conf-badge');
+        const actionsEl = aiBlock.querySelector('.ai-actions');
+
+        let rawText = '';
+
+        // Read the SSE stream
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // keep incomplete line in buffer
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6);
+                let event;
+                try { event = JSON.parse(jsonStr); } catch(_) { continue; }
+
+                if (event.type === 'meta') {
+                    subjectEl.textContent = event.subject;
+                    subjectEl.style.display = '';
+                    scrollBottom();
+                }
+                else if (event.type === 'token') {
+                    rawText += event.token;
+                    // Live render: simple text with line breaks
+                    textEl.textContent = rawText;
+                    scrollBottom();
+                }
+                else if (event.type === 'done') {
+                    // Replace raw text with rendered markdown HTML
+                    textEl.innerHTML = event.answer_html;
+
+                    // Show confidence badge
+                    const cc = event.conf_class;
+                    const cl = event.conf_label;
+                    const pct = Math.round(event.confidence * 100);
+                    confEl.className = 'conf-badge ' + cc;
+                    confEl.textContent = `Confidence: ${cl} (${pct}%)`;
+                    confEl.style.display = '';
+
+                    // Show copy action
+                    actionsEl.style.display = '';
+                    attachAiActions(aiBlock);
+                    scrollBottom();
+                }
+                else if (event.type === 'corrections') {
+                    // optional: could display correction notice
+                }
+            }
         }
+
     } catch(e) {
         typingIndicator.classList.remove('active');
         chatMessages.appendChild(typingIndicator);
@@ -562,7 +645,7 @@ async function sendQuestion() {
     questionInput.value = '';
     const userBlock = buildUserBlock(q);
     chatMessages.insertBefore(userBlock, typingIndicator);
-    await askAndInsertAfter(q, userBlock);
+    await askStreamAndInsertAfter(q, userBlock);
 }
 
 sendBtn.addEventListener('click', sendQuestion);

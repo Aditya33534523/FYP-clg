@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.cache import never_cache
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.http import require_POST
 from django.contrib import messages
 from django.contrib.auth.models import User
@@ -199,6 +199,83 @@ def ask_view(request):
         'corrected_question': question if corrections_made else None,
     })
     return _no_cache_auth(resp)
+
+
+@login_required
+@require_POST
+@never_cache
+def ask_stream_view(request):
+    """SSE streaming endpoint — tokens arrive in real-time."""
+    try:
+        data     = json.loads(request.body)
+        question = data.get('question', '').strip()
+        marks    = int(data.get('marks', 1))
+    except Exception:
+        return JsonResponse({'error': 'Invalid request'}, status=400)
+
+    if not question:
+        return JsonResponse({'error': 'Question cannot be empty'}, status=400)
+
+    SessionActivityTracker.initialize_session(request)
+    SessionActivityTracker.update_activity(request)
+    SessionActivityTracker.increment_query_count(request)
+
+    original_question = question
+    question, corrections_made = correct_query(question, use_fuzzy=True, fuzzy_threshold=0.7)
+
+    for original, corrected in corrections_made.items():
+        SessionActivityTracker.add_correction(request, original, corrected)
+
+    # Capture user for DB save inside the generator
+    user = request.user
+
+    def event_stream():
+        from .rag_engine import get_rag_engine
+        engine = get_rag_engine()
+
+        confidence = 0.0
+        subject = "N/A"
+        full_answer = ""
+
+        # Send correction info first if applicable
+        if corrections_made:
+            correction_info = ", ".join(
+                [f"'{orig}' → '{corr}'" for orig, corr in corrections_made.items()]
+            )
+            yield f"data: {json.dumps({'type': 'corrections', 'corrections': corrections_made, 'correction_info': correction_info, 'original_question': original_question, 'corrected_question': question})}\n\n"
+
+        for event in engine.answer_question_stream(question, marks):
+            if event["type"] == "meta":
+                confidence = event["confidence"]
+                subject = event["subject"]
+                yield f"data: {json.dumps({'type': 'meta', 'confidence': confidence, 'subject': subject})}\n\n"
+
+            elif event["type"] == "token":
+                yield f"data: {json.dumps({'type': 'token', 'token': event['token']})}\n\n"
+
+            elif event["type"] == "done":
+                full_answer = event["full_answer"]
+                answer_html = md.markdown(full_answer, extensions=['extra', 'nl2br'])
+
+                # Save to DB
+                conf_label = 'High' if confidence >= 0.6 else ('Medium' if confidence >= 0.35 else 'Low')
+                conf_class = 'conf-high' if confidence >= 0.6 else ('conf-medium' if confidence >= 0.35 else 'conf-low')
+
+                chat = ChatHistory.objects.create(
+                    user=user,
+                    question=question,
+                    answer=answer_html,
+                    confidence=confidence,
+                    subject=subject,
+                    marks=marks
+                )
+
+                yield f"data: {json.dumps({'type': 'done', 'id': chat.id, 'answer_html': answer_html, 'confidence': confidence, 'conf_label': conf_label, 'conf_class': conf_class, 'subject': subject})}\n\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'  # Disable nginx buffering if applicable
+    return response
 
 
 @login_required
